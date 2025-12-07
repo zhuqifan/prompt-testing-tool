@@ -6,15 +6,20 @@
 
 This contains everything you need to run your app locally.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1nHey3-bpeRAp1k-CapWg_t1to0cYFTlv
 
 ## Run Locally
 
 **Prerequisites:**  Node.js
-
 
 1. Install dependencies:
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+
+## Functions
+
+only work for doubao-seed model.
+
+<img width="2872" height="1428" alt="ScreenShot_2025-12-08_003643_763" src="https://github.com/user-attachments/assets/eb974c99-7b44-4ca2-8c03-0cdf637cea9b" />
