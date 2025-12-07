@@ -9,6 +9,7 @@
 ```bash
 # 构建并启动容器
 docker-compose up -d
+访问地址: http://localhost:3001
 
 # 查看日志
 docker-compose logs -f
@@ -16,6 +17,8 @@ docker-compose logs -f
 # 停止容器
 docker-compose down
 ```
+
+
 
 ## Functions
 
