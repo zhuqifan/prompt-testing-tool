@@ -1,0 +1,5 @@
+{
+  "name": "Prompt Engineering Lab",
+  "description": "A specialized tool for prompt engineers to test system instructions against user inputs with parallel generation using Volcengine models.",
+  "requestFramePermissions": []
+}
