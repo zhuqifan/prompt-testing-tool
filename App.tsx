@@ -5,7 +5,7 @@ import { ResultCard } from './components/ResultCard';
 import { apiService } from './services/api';
 import { storageService } from './services/storage';
 import { SavedPrompt, TestRun, ModelConfig, DEFAULT_CONFIG, GenerationResult } from './types';
-import { Play, Save, Terminal, User, Check, AlertCircle, StopCircle, Trash2 } from 'lucide-react';
+import { Play, Save, Terminal, User, Check, AlertCircle, StopCircle, Trash2, Code, X, Copy } from 'lucide-react';
 
 // Simple ID generator for browser
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -50,6 +50,64 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({ isOpen, title, message, onC
   );
 };
 
+// Payload Modal Component
+interface PayloadModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  systemPrompt: string;
+  userPrompt: string;
+}
+
+const PayloadModal: React.FC<PayloadModalProps> = ({ isOpen, onClose, systemPrompt, userPrompt }) => {
+  if (!isOpen) return null;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ];
+
+  const jsonString = JSON.stringify(messages, null, 2);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(jsonString);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col transform transition-all scale-100 opacity-100 border border-slate-100" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-4 border-b border-slate-100">
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <Code className="w-5 h-5 text-primary" />
+            Request Payload
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-0 bg-[#1e293b]">
+          <pre className="text-sm font-mono text-blue-100 p-4 leading-relaxed whitespace-pre-wrap">
+            {jsonString}
+          </pre>
+        </div>
+        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2 rounded-b-xl">
+           <button 
+            onClick={handleCopy}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+          >
+            <Copy className="w-4 h-4" /> Copy JSON
+          </button>
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-blue-600 rounded-lg transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   // --- State ---
   const [history, setHistory] = useState<TestRun[]>([]);
@@ -72,6 +130,8 @@ const App: React.FC = () => {
 
   const [configOpen, setConfigOpen] = useState(true);
   const [saveStatus, setSaveStatus] = useState<{type: 'system' | 'user' | null, show: boolean}>({ type: null, show: false });
+  
+  const [payloadModalOpen, setPayloadModalOpen] = useState(false);
 
   // Delete Modal State
   const [deleteModal, setDeleteModal] = useState<{
@@ -334,6 +394,14 @@ const App: React.FC = () => {
         onCancel={() => setDeleteModal({ ...deleteModal, isOpen: false })}
       />
 
+      {/* Payload Viewer Modal */}
+      <PayloadModal 
+        isOpen={payloadModalOpen}
+        onClose={() => setPayloadModalOpen(false)}
+        systemPrompt={systemPrompt}
+        userPrompt={userPrompt}
+      />
+
       {/* Left Sidebar */}
       <Sidebar 
         history={history}
@@ -467,9 +535,19 @@ const App: React.FC = () => {
         {/* Results Grid Area */}
         <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
           <div className="max-w-7xl mx-auto h-full flex flex-col">
-            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
-              Output Results {currentResults.length > 0 && `(${currentResults.length})`}
-            </h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                Output Results {currentResults.length > 0 && `(${currentResults.length})`}
+              </h2>
+              <button 
+                onClick={() => setPayloadModalOpen(true)}
+                className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded hover:bg-slate-50 hover:text-primary hover:border-primary/50 transition-colors"
+                title="View JSON Payload"
+              >
+                <Code className="w-3.5 h-3.5" />
+                Show Payload
+              </button>
+            </div>
             
             {currentResults.length === 0 ? (
                <div className="flex-1 flex flex-col items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 rounded-xl m-4">
