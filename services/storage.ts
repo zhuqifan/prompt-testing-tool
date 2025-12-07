@@ -1,126 +1,153 @@
 import { SavedPrompt, TestRun } from '../types';
 
-const KEYS = {
-  SYSTEM_PROMPTS: 'pel_system_prompts',
-  USER_PROMPTS: 'pel_user_prompts',
-  HISTORY: 'pel_history',
-  API_KEY: 'pel_volc_api_key',
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+// API 请求辅助函数
+const apiRequest = async (endpoint: string, options?: RequestInit) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('API Request Error:', error);
+    throw error;
+  }
 };
 
 export const storageService = {
   // --- Prompts ---
-  getSystemPrompts: (): SavedPrompt[] => {
+  getSystemPrompts: async (): Promise<SavedPrompt[]> => {
     try {
-      return JSON.parse(localStorage.getItem(KEYS.SYSTEM_PROMPTS) || '[]');
-    } catch { return []; }
+      return await apiRequest('/api/prompts/system');
+    } catch {
+      return [];
+    }
   },
 
-  getUserPrompts: (): SavedPrompt[] => {
+  getUserPrompts: async (): Promise<SavedPrompt[]> => {
     try {
-      return JSON.parse(localStorage.getItem(KEYS.USER_PROMPTS) || '[]');
-    } catch { return []; }
+      return await apiRequest('/api/prompts/user');
+    } catch {
+      return [];
+    }
   },
 
   // Returns the updated list of prompts to ensure state is in sync
-  savePrompt: (prompt: SavedPrompt): SavedPrompt[] => {
+  savePrompt: async (prompt: SavedPrompt): Promise<SavedPrompt[]> => {
     try {
-      const key = prompt.type === 'system' ? KEYS.SYSTEM_PROMPTS : KEYS.USER_PROMPTS;
-      const current = prompt.type === 'system' ? storageService.getSystemPrompts() : storageService.getUserPrompts();
-      
-      const existsIndex = current.findIndex(p => p.id === prompt.id);
-      let updated;
-      if (existsIndex >= 0) {
-        updated = [...current];
-        updated[existsIndex] = prompt;
-      } else {
-        updated = [prompt, ...current];
-      }
-      
-      localStorage.setItem(key, JSON.stringify(updated));
-      return updated;
+      const endpoint = prompt.type === 'system' ? '/api/prompts/system' : '/api/prompts/user';
+      return await apiRequest(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(prompt),
+      });
     } catch (e) {
       console.error("Storage Error", e);
       return [];
     }
   },
 
-  deletePrompt: (id: string, type: 'system' | 'user'): SavedPrompt[] => {
+  deletePrompt: async (id: string, type: 'system' | 'user'): Promise<SavedPrompt[]> => {
     try {
-      const key = type === 'system' ? KEYS.SYSTEM_PROMPTS : KEYS.USER_PROMPTS;
-      const current = type === 'system' ? storageService.getSystemPrompts() : storageService.getUserPrompts();
-      const updated = current.filter(p => p.id !== id);
-      localStorage.setItem(key, JSON.stringify(updated));
-      return updated;
-    } catch (e) { return []; }
+      const endpoint = type === 'system' ? `/api/prompts/system/${id}` : `/api/prompts/user/${id}`;
+      return await apiRequest(endpoint, {
+        method: 'DELETE',
+      });
+    } catch {
+      return [];
+    }
   },
 
-  updatePromptTitle: (id: string, type: 'system' | 'user', newTitle: string): SavedPrompt[] => {
+  updatePromptTitle: async (id: string, type: 'system' | 'user', newTitle: string): Promise<SavedPrompt[]> => {
     try {
-      const key = type === 'system' ? KEYS.SYSTEM_PROMPTS : KEYS.USER_PROMPTS;
-      const current = type === 'system' ? storageService.getSystemPrompts() : storageService.getUserPrompts();
-      const updated = current.map(p => p.id === id ? { ...p, title: newTitle } : p);
-      localStorage.setItem(key, JSON.stringify(updated));
-      return updated;
-    } catch (e) { return []; }
+      const endpoint = type === 'system' ? `/api/prompts/system/${id}/title` : `/api/prompts/user/${id}/title`;
+      return await apiRequest(endpoint, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: newTitle }),
+      });
+    } catch {
+      return [];
+    }
   },
 
-  togglePromptFavorite: (id: string, type: 'system' | 'user'): SavedPrompt[] => {
+  togglePromptFavorite: async (id: string, type: 'system' | 'user'): Promise<SavedPrompt[]> => {
     try {
-        const key = type === 'system' ? KEYS.SYSTEM_PROMPTS : KEYS.USER_PROMPTS;
-        const current = type === 'system' ? storageService.getSystemPrompts() : storageService.getUserPrompts();
-        const updated = current.map(p => p.id === id ? { ...p, isFavorite: !p.isFavorite } : p);
-        localStorage.setItem(key, JSON.stringify(updated));
-        return updated;
-    } catch (e) { return []; }
+      const endpoint = type === 'system' ? `/api/prompts/system/${id}/favorite` : `/api/prompts/user/${id}/favorite`;
+      return await apiRequest(endpoint, {
+        method: 'PATCH',
+      });
+    } catch {
+      return [];
+    }
   },
 
   // --- History ---
-  getHistory: (): TestRun[] => {
+  getHistory: async (): Promise<TestRun[]> => {
     try {
-      return JSON.parse(localStorage.getItem(KEYS.HISTORY) || '[]');
-    } catch { return []; }
+      return await apiRequest('/api/history');
+    } catch {
+      return [];
+    }
   },
 
-  saveTestRun: (run: TestRun): void => {
+  saveTestRun: async (run: TestRun): Promise<void> => {
     try {
-      const current = storageService.getHistory();
-      // Check if run already exists to prevent duplicates
-      const exists = current.find(r => r.id === run.id);
-      if (!exists) {
-        const updated = [run, ...current].slice(0, 50);
-        localStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
-      }
-    } catch (e) {}
+      await apiRequest('/api/history', {
+        method: 'POST',
+        body: JSON.stringify(run),
+      });
+    } catch (e) {
+      console.error('Save test run error:', e);
+    }
   },
   
-  deleteHistoryItem: (id: string): TestRun[] => {
+  deleteHistoryItem: async (id: string): Promise<TestRun[]> => {
     try {
-      const current = storageService.getHistory();
-      const updated = current.filter(item => item.id !== id);
-      localStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
-      return updated;
-    } catch (e) { return []; }
+      return await apiRequest(`/api/history/${id}`, {
+        method: 'DELETE',
+      });
+    } catch {
+      return [];
+    }
   },
 
-  toggleHistoryFavorite: (id: string): TestRun[] => {
+  toggleHistoryFavorite: async (id: string): Promise<TestRun[]> => {
     try {
-        const current = storageService.getHistory();
-        const updated = current.map(item => item.id === id ? { ...item, isFavorite: !item.isFavorite } : item);
-        localStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
-        return updated;
-    } catch (e) { return []; }
+      return await apiRequest(`/api/history/${id}/favorite`, {
+        method: 'PATCH',
+      });
+    } catch {
+      return [];
+    }
   },
 
   // --- Settings ---
-  getApiKey: (): string => {
+  getApiKey: async (): Promise<string> => {
     try {
-      return localStorage.getItem(KEYS.API_KEY) || '';
-    } catch { return ''; }
+      const result = await apiRequest('/api/settings/api-key');
+      return result.apiKey || '';
+    } catch {
+      return '';
+    }
   },
 
-  saveApiKey: (key: string): void => {
+  saveApiKey: async (key: string): Promise<void> => {
     try {
-      localStorage.setItem(KEYS.API_KEY, key);
-    } catch (e) {}
+      await apiRequest('/api/settings/api-key', {
+        method: 'POST',
+        body: JSON.stringify({ apiKey: key }),
+      });
+    } catch (e) {
+      console.error('Save API key error:', e);
+    }
   }
 };

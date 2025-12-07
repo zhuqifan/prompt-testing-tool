@@ -151,10 +151,23 @@ const App: React.FC = () => {
 
   // --- Initialization ---
   useEffect(() => {
-    setHistory(storageService.getHistory());
-    setSavedSystemPrompts(storageService.getSystemPrompts());
-    setSavedUserPrompts(storageService.getUserPrompts());
-    setApiKey(storageService.getApiKey());
+    const loadData = async () => {
+      try {
+        const [history, systemPrompts, userPrompts, apiKeyResult] = await Promise.all([
+          storageService.getHistory(),
+          storageService.getSystemPrompts(),
+          storageService.getUserPrompts(),
+          storageService.getApiKey(),
+        ]);
+        setHistory(history);
+        setSavedSystemPrompts(systemPrompts);
+        setSavedUserPrompts(userPrompts);
+        setApiKey(apiKeyResult);
+      } catch (error) {
+        console.error('加载数据失败:', error);
+      }
+    };
+    loadData();
   }, []);
 
   // --- Resize Handler ---
@@ -194,9 +207,9 @@ const App: React.FC = () => {
   }, []);
 
   // --- Handlers ---
-  const handleApiKeyChange = (key: string) => {
+  const handleApiKeyChange = async (key: string) => {
       setApiKey(key);
-      storageService.saveApiKey(key);
+      await storageService.saveApiKey(key);
   };
 
   const handleRunTest = async () => {
@@ -304,18 +317,24 @@ const App: React.FC = () => {
                         config,
                         results: cleanResults,
                     };
-                    // Check if already exists to prevent duplicates
-                    const existingHistory = storageService.getHistory();
-                    if (!existingHistory.find(r => r.id === runId)) {
-                        storageService.saveTestRun(newRun);
-                        setHistory(prev => {
-                            // Prevent duplicate in state
-                            if (!prev.find(r => r.id === runId)) {
-                                return [newRun, ...prev];
+                    // Save asynchronously (don't await in setState callback)
+                    (async () => {
+                        try {
+                            const existingHistory = await storageService.getHistory();
+                            if (!existingHistory.find(r => r.id === runId)) {
+                                await storageService.saveTestRun(newRun);
+                                setHistory(prev => {
+                                    // Prevent duplicate in state
+                                    if (!prev.find(r => r.id === runId)) {
+                                        return [newRun, ...prev];
+                                    }
+                                    return prev;
+                                });
                             }
-                            return prev;
-                        });
-                    }
+                        } catch (e) {
+                            console.error('保存历史记录失败:', e);
+                        }
+                    })();
                 }
                 
                 return cleanResults;
@@ -330,7 +349,7 @@ const App: React.FC = () => {
       }
   };
 
-  const handleSavePrompt = (type: 'system' | 'user') => {
+  const handleSavePrompt = async (type: 'system' | 'user') => {
     const content = type === 'system' ? systemPrompt : userPrompt;
     if (!content || !content.trim()) {
         return;
@@ -349,7 +368,7 @@ const App: React.FC = () => {
     };
 
     try {
-        const updatedList = storageService.savePrompt(newPrompt);
+        const updatedList = await storageService.savePrompt(newPrompt);
         
         if (type === 'system') {
             setSavedSystemPrompts(updatedList);
@@ -364,7 +383,7 @@ const App: React.FC = () => {
         setSaveStatus({ type, show: true });
         setTimeout(() => setSaveStatus({ type: null, show: false }), 2000);
     } catch (e) {
-        console.error("Save failed", e);
+        console.error("保存失败", e);
     }
   };
 
@@ -377,7 +396,7 @@ const App: React.FC = () => {
     setDeleteModal({ isOpen: true, type: 'history', id });
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     const { type, id } = deleteModal;
     
     if (!id) {
@@ -387,29 +406,29 @@ const App: React.FC = () => {
     
     if (type === 'history') {
       try {
-        const updated = storageService.deleteHistoryItem(id);
+        const updated = await storageService.deleteHistoryItem(id);
         setHistory(updated);
       } catch (e) { 
-        console.error('Delete history error:', e);
+        console.error('删除历史错误:', e);
       }
     } else {
       try {
-        const updatedList = storageService.deletePrompt(id, type);
+        const updatedList = await storageService.deletePrompt(id, type);
         if (type === 'system') {
           setSavedSystemPrompts(updatedList);
         } else {
           setSavedUserPrompts(updatedList);
         }
       } catch (e) { 
-        console.error('Delete prompt error:', e);
+        console.error('删除提示词错误:', e);
       }
     }
     
     setDeleteModal({ isOpen: false, type: 'history', id: '' });
   };
 
-  const handleRenamePrompt = (id: string, type: 'system' | 'user', newTitle: string) => {
-      const updatedList = storageService.updatePromptTitle(id, type, newTitle);
+  const handleRenamePrompt = async (id: string, type: 'system' | 'user', newTitle: string) => {
+      const updatedList = await storageService.updatePromptTitle(id, type, newTitle);
       if (type === 'system') {
           setSavedSystemPrompts(updatedList);
       } else {
@@ -417,8 +436,8 @@ const App: React.FC = () => {
       }
   };
 
-  const handleTogglePromptFavorite = (id: string, type: 'system' | 'user') => {
-      const updatedList = storageService.togglePromptFavorite(id, type);
+  const handleTogglePromptFavorite = async (id: string, type: 'system' | 'user') => {
+      const updatedList = await storageService.togglePromptFavorite(id, type);
       if (type === 'system') {
           setSavedSystemPrompts(updatedList);
       } else {
@@ -426,8 +445,8 @@ const App: React.FC = () => {
       }
   };
 
-  const handleToggleHistoryFavorite = (id: string) => {
-      const updated = storageService.toggleHistoryFavorite(id);
+  const handleToggleHistoryFavorite = async (id: string) => {
+      const updated = await storageService.toggleHistoryFavorite(id);
       setHistory(updated);
   };
 
