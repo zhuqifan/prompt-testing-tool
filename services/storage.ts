@@ -84,8 +84,12 @@ export const storageService = {
   saveTestRun: (run: TestRun): void => {
     try {
       const current = storageService.getHistory();
-      const updated = [run, ...current].slice(0, 50);
-      localStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
+      // Check if run already exists to prevent duplicates
+      const exists = current.find(r => r.id === run.id);
+      if (!exists) {
+        const updated = [run, ...current].slice(0, 50);
+        localStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
+      }
     } catch (e) {}
   },
   

@@ -142,6 +142,12 @@ const App: React.FC = () => {
 
   // Refs
   const abortControllerRef = useRef<AbortController | null>(null);
+  const hasSavedHistoryRef = useRef<boolean>(false);
+  const resizeRef = useRef<HTMLDivElement | null>(null);
+  const isResizingRef = useRef<boolean>(false);
+
+  // Resizable split state
+  const [promptAreaHeight, setPromptAreaHeight] = useState<number>(400); // Default height in pixels
 
   // --- Initialization ---
   useEffect(() => {
@@ -149,6 +155,42 @@ const App: React.FC = () => {
     setSavedSystemPrompts(storageService.getSystemPrompts());
     setSavedUserPrompts(storageService.getUserPrompts());
     setApiKey(storageService.getApiKey());
+  }, []);
+
+  // --- Resize Handler ---
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current || !resizeRef.current) return;
+      
+      const rect = resizeRef.current.getBoundingClientRect();
+      const mainContentArea = resizeRef.current.parentElement;
+      if (!mainContentArea) return;
+      
+      const mainRect = mainContentArea.getBoundingClientRect();
+      const newHeight = e.clientY - mainRect.top;
+      
+      // Set min and max heights
+      const minHeight = 200;
+      const maxHeight = mainRect.height - 200;
+      
+      if (newHeight >= minHeight && newHeight <= maxHeight) {
+        setPromptAreaHeight(newHeight);
+      }
+    };
+
+    const handleMouseUp = () => {
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
   }, []);
 
   // --- Handlers ---
@@ -163,6 +205,7 @@ const App: React.FC = () => {
     setIsRunning(true);
     const runId = generateId();
     setLastRunId(runId);
+    hasSavedHistoryRef.current = false; // Reset save flag
     
     // Create new AbortController
     abortControllerRef.current = new AbortController();
@@ -239,31 +282,45 @@ const App: React.FC = () => {
         setIsRunning(false);
         abortControllerRef.current = null;
         
-        // Save history even if stopped
-        setCurrentResults(finalResults => {
-            // Clean up statuses for history (convert loading/streaming to completed/stopped)
-            const cleanResults = finalResults.map(r => 
-                (r.status === 'loading' || r.status === 'streaming') 
-                ? { ...r, status: 'completed' as const } 
-                : r
-            );
-
-            // Only save if we actually have some prompts or results
-            if (systemPrompt || userPrompt) {
-                const newRun: TestRun = {
-                    id: runId,
-                    timestamp: Date.now(),
-                    systemPrompt,
-                    userPrompt,
-                    config,
-                    results: cleanResults,
-                };
-                storageService.saveTestRun(newRun);
-                setHistory(prev => [newRun, ...prev]);
-            }
+        // Save history even if stopped - only once
+        if (!hasSavedHistoryRef.current) {
+            hasSavedHistoryRef.current = true; // Mark as saved immediately to prevent duplicate calls
             
-            return cleanResults;
-        });
+            setCurrentResults(finalResults => {
+                // Clean up statuses for history (convert loading/streaming to completed/stopped)
+                const cleanResults = finalResults.map(r => 
+                    (r.status === 'loading' || r.status === 'streaming') 
+                    ? { ...r, status: 'completed' as const } 
+                    : r
+                );
+
+                // Only save if we actually have some prompts or results
+                if (systemPrompt || userPrompt) {
+                    const newRun: TestRun = {
+                        id: runId,
+                        timestamp: Date.now(),
+                        systemPrompt,
+                        userPrompt,
+                        config,
+                        results: cleanResults,
+                    };
+                    // Check if already exists to prevent duplicates
+                    const existingHistory = storageService.getHistory();
+                    if (!existingHistory.find(r => r.id === runId)) {
+                        storageService.saveTestRun(newRun);
+                        setHistory(prev => {
+                            // Prevent duplicate in state
+                            if (!prev.find(r => r.id === runId)) {
+                                return [newRun, ...prev];
+                            }
+                            return prev;
+                        });
+                    }
+                }
+                
+                return cleanResults;
+            });
+        }
     }
   };
 
@@ -323,11 +380,18 @@ const App: React.FC = () => {
   const confirmDelete = () => {
     const { type, id } = deleteModal;
     
+    if (!id) {
+      setDeleteModal({ isOpen: false, type: 'history', id: '' });
+      return;
+    }
+    
     if (type === 'history') {
       try {
         const updated = storageService.deleteHistoryItem(id);
         setHistory(updated);
-      } catch (e) { console.error(e); }
+      } catch (e) { 
+        console.error('Delete history error:', e);
+      }
     } else {
       try {
         const updatedList = storageService.deletePrompt(id, type);
@@ -336,7 +400,9 @@ const App: React.FC = () => {
         } else {
           setSavedUserPrompts(updatedList);
         }
-      } catch (e) { console.error(e); }
+      } catch (e) { 
+        console.error('Delete prompt error:', e);
+      }
     }
     
     setDeleteModal({ isOpen: false, type: 'history', id: '' });
@@ -424,15 +490,19 @@ const App: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-y-auto">
         
         {/* Top Input Area */}
-        <div className="p-6 overflow-y-auto border-b border-slate-200 bg-white shrink-0 shadow-sm z-10">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-7xl mx-auto">
+        <div 
+          className="border-b border-slate-200 bg-white shadow-sm z-10 shrink-0"
+          style={{ height: `${promptAreaHeight}px`, minHeight: '200px' }}
+        >
+          <div className="p-6 h-full flex flex-col">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mx-auto flex-1 min-h-0 w-full max-w-none px-4">
             
             {/* System Prompt Input */}
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between items-center">
+            <div className="flex flex-col gap-2 flex-1 min-h-0">
+              <div className="flex justify-between items-center shrink-0">
                 <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                   <Terminal className="w-4 h-4 text-secondary" />
                   System Prompt
@@ -462,13 +532,13 @@ const App: React.FC = () => {
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 placeholder="You are a helpful assistant..."
-                className="w-full h-32 p-3 text-sm font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none bg-slate-50 text-slate-900 placeholder:text-slate-400"
+                className="w-full flex-1 min-h-0 p-3 text-sm font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none bg-slate-50 text-slate-900 placeholder:text-slate-400"
               />
             </div>
 
             {/* User Prompt Input */}
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between items-center">
+            <div className="flex flex-col gap-2 flex-1 min-h-0">
+              <div className="flex justify-between items-center shrink-0">
                 <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                   <User className="w-4 h-4 text-secondary" />
                   User Prompt
@@ -498,13 +568,13 @@ const App: React.FC = () => {
                 value={userPrompt}
                 onChange={(e) => setUserPrompt(e.target.value)}
                 placeholder="Enter your test input here..."
-                className="w-full h-32 p-3 text-sm font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none bg-white text-slate-900 placeholder:text-slate-400"
+                className="w-full flex-1 min-h-0 p-3 text-sm font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none bg-white text-slate-900 placeholder:text-slate-400"
               />
             </div>
           </div>
 
           {/* Action Bar */}
-          <div className="flex justify-end mt-4 max-w-7xl mx-auto">
+          <div className="flex justify-end mt-4 mx-auto shrink-0 w-full max-w-none px-4">
             {isRunning ? (
                 <button
                 onClick={handleStop}
@@ -530,10 +600,27 @@ const App: React.FC = () => {
                 </button>
             )}
           </div>
+          </div>
+        </div>
+
+        {/* Resize Handle */}
+        <div
+          ref={resizeRef}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            isResizingRef.current = true;
+            document.body.style.cursor = 'row-resize';
+            document.body.style.userSelect = 'none';
+          }}
+          className="h-1 bg-slate-200 hover:bg-primary cursor-row-resize transition-colors relative group"
+        >
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-12 h-0.5 bg-slate-400 group-hover:bg-primary transition-colors rounded-full"></div>
+          </div>
         </div>
 
         {/* Results Grid Area */}
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+        <div className="p-6 bg-slate-50/50 shrink-0">
           <div className="max-w-7xl mx-auto h-full flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">

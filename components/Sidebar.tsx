@@ -69,15 +69,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     });
   }, [history]);
 
-  const currentPrompts = promptTypeTab === 'system' ? savedSystemPrompts : savedUserPrompts;
+  const currentPrompts = useMemo(() => {
+      return promptTypeTab === 'system' ? savedSystemPrompts : savedUserPrompts;
+  }, [promptTypeTab, savedSystemPrompts, savedUserPrompts]);
+  
   const sortedPrompts = useMemo(() => {
-      return [...currentPrompts].sort((a, b) => {
+      // Ensure we only show prompts, not history items
+      const prompts = currentPrompts.filter(p => p.type === promptTypeTab);
+      return [...prompts].sort((a, b) => {
           if (a.isFavorite === b.isFavorite) {
               return b.createdAt - a.createdAt;
           }
           return (a.isFavorite ? -1 : 1);
       });
-  }, [currentPrompts]);
+  }, [currentPrompts, promptTypeTab]);
 
   if (!isOpen) {
     return (
@@ -189,9 +194,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            // Force stop propagation
-                            if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
-                            onDeleteHistory(run.id);
+                            e.nativeEvent?.stopImmediatePropagation();
+                            if (run.id) {
+                                onDeleteHistory(run.id);
+                            }
+                        }}
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
                         }}
                         className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-all"
                         title="Delete History"
@@ -310,9 +320,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    // Force stop propagation
-                                    if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
-                                    onDeletePrompt(prompt.id, prompt.type);
+                                    e.nativeEvent?.stopImmediatePropagation();
+                                    if (prompt.id && prompt.type) {
+                                        onDeletePrompt(prompt.id, prompt.type);
+                                    }
+                                }}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                 }}
                                 className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded"
                                 title="Delete"
